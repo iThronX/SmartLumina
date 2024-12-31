@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 import uvicorn
+from Message import fault_device_message
 
 app = FastAPI()
 
@@ -11,6 +12,12 @@ MONGO_URI = "mongodb://localhost:27017"
 DATABASE_NAME = "SensorDB"
 COLLECTION_NAME = "SensorData"
 
+THRESHOLDS = {
+    "Temperature": {"min": 10.0, "max": 50.0},
+    "Humidity": {"min": 5.0, "max": 100.0},
+    "LDR": {"min": 0, "max": 1023},
+    "Voltage": {"min": 3.0, "max": 4.2}
+}
 
 client = AsyncIOMotorClient(MONGO_URI)
 db = client[DATABASE_NAME]
@@ -33,6 +40,31 @@ class SensorData(BaseModel):
 
 @app.post("/store-sensor-data/")
 async def store_sensor_data(sensor_data: List[SensorData]):
+    faulty_devices = []  
+
+    for data in sensor_data:
+        
+        faults = []
+        if not (THRESHOLDS["Temperature"]["min"] <= data.Temperature <= THRESHOLDS["Temperature"]["max"]):
+            faults.append(f"Temperature: {data.Temperature}")
+        if not (THRESHOLDS["Humidity"]["min"] <= data.Humidity <= THRESHOLDS["Humidity"]["max"]):
+            faults.append(f"Humidity: {data.Humidity}")
+        if not (THRESHOLDS["LDR"]["min"] <= data.LDR <= THRESHOLDS["LDR"]["max"]):
+            faults.append(f"LDR: {data.LDR}")
+        if not (THRESHOLDS["Voltage"]["min"] <= data.Voltage <= THRESHOLDS["Voltage"]["max"]):
+            faults.append(f"Voltage: {data.Voltage}")
+
+        
+        if faults:
+            faulty_devices.append({
+                "DeviceId": data.DeviceId,
+                "Faults": faults,
+                "Location": f"https://www.google.com/maps/?q={data.GPS.Latitude},{data.GPS.Longitude}",
+                "Timestamp": data.Timestamp
+            })
+   
+    fault_device_message(faulty_devices)
+
     try:
         
         for d in sensor_data:
